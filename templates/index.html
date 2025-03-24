@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Interactive PDF Q&A</title>
+  <style>
+    /* Basic styling */
+    body {
+      font-family: Arial, sans-serif;
+    }
+    #uploadSection {
+      margin: 20px;
+    }
+    #mainScreen {
+      display: none;
+      margin: 20px;
+    }
+    /* Two-panel layout using flexbox */
+    #container {
+      display: flex;
+      gap: 20px;
+    }
+    #paperPanel {
+      flex: 2;
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 80vh;
+      overflow-y: scroll;
+    }
+    #qaPanel {
+      flex: 1;
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #selectedText {
+      border: 1px solid #999;
+      padding: 10px;
+      min-height: 150px;
+      margin-bottom: 10px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    #reasonButton {
+      padding: 10px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    #answerBox {
+      border: 1px solid #ccc;
+      padding: 10px;
+      background-color: #fafafa;
+      flex: 1;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    /* Make paragraphs in the paper clickable */
+    .clickable {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="uploadSection">
+    <h1>Upload PDF Research Paper</h1>
+    <form id="uploadForm">
+      <input type="file" name="pdf" id="pdf" accept="application/pdf" required>
+      <button type="submit">Upload</button>
+    </form>
+  </div>
+
+  <!-- Main screen with two partitions -->
+  <div id="mainScreen">
+    <h2>Paper Viewer & Q&A</h2>
+    <div id="container">
+      <!-- Left panel: Paper display -->
+      <div id="paperPanel"></div>
+      <!-- Right panel: Selected text and Q&A area -->
+      <div id="qaPanel">
+        <h3>Selected Text</h3>
+        <div id="selectedText">Click on any paragraph in the paper to select text.</div>
+        <button id="reasonButton">Reason</button>
+        <h3>Answer</h3>
+        <div id="answerBox">The answer will appear here after you click "Reason".</div>
+      </div>
+    </div>
+    <!-- Optional: Kill session button -->
+    <button id="killSessionButton" style="margin-top:10px;">End Session</button>
+  </div>
+
+  <script>
+    let sessionId = "";
+
+    // Handle file upload and conversion
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('pdf');
+      const formData = new FormData();
+      formData.append('pdf', fileInput.files[0]);
+
+      fetch('/upload', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        sessionId = data.session_id;
+        // Switch to the main two-panel screen
+        document.getElementById('uploadSection').style.display = 'none';
+        document.getElementById('mainScreen').style.display = 'block';
+        // Display the converted HTML content in the paper panel
+        document.getElementById('paperPanel').innerHTML = data.html;
+
+        // Make paragraphs clickable to select text for Q&A
+        const paragraphs = document.querySelectorAll('#paperPanel p');
+        paragraphs.forEach(p => {
+          p.classList.add('clickable');
+          p.addEventListener('click', function() {
+            document.getElementById('selectedText').innerText = p.innerText;
+          });
+        });
+      })
+      .catch(error => console.error('Error:', error));
+    });
+
+    // Handle the "Reason" button click to query the GPT session
+    document.getElementById('reasonButton').addEventListener('click', function() {
+      const selectedText = document.getElementById('selectedText').innerText;
+      if (!selectedText || selectedText === "Click on any paragraph in the paper to select text.") {
+        alert("Please click on a paragraph in the paper to select text.");
+        return;
+      }
+
+      fetch('/qna', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: selectedText,
+          session_id: sessionId
+        })
+      })
+      .then(res => res.json())
+      .then(result => {
+        document.getElementById('answerBox').innerText = result.answer;
+      })
+      .catch(err => {
+        document.getElementById('answerBox').innerText = "Error fetching answer.";
+      });
+    });
+
+    // Optionally allow the user to kill the session
+    document.getElementById('killSessionButton').addEventListener('click', function() {
+      fetch('/kill_session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      .then(res => res.json())
+      .then(result => {
+        alert(result.message || result.error);
+        // Optionally, refresh or redirect the page here.
+      });
+    });
+  </script>
+</body>
+</html>
